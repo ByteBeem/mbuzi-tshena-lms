@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime
+from datetime import date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
@@ -117,7 +118,7 @@ def payments_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin),
 ):
-    from datetime import date
+    
     today = date.today()
 
     total_collected = (
