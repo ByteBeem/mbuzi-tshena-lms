@@ -13,8 +13,10 @@ import DashboardOverview from "./pages/DashboardOverview";
 import LoanRequests from "./pages/LoanRequests";
 import PaymentsTracker from "./pages/PaymentsTracker";
 import BorrowersList from "./pages/BorrowersList";
-import UserSignUp from "./pages/UserSignUp";
+import ProofOfPayments from "./pages/ProofOfPayments";
+import InvestorRequests from "./pages/InvestorRequests";
 
+import UserSignUp from "./pages/UserSignUp";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function RootErrorBoundary() {
@@ -22,17 +24,9 @@ function RootErrorBoundary() {
 
   return (
     <div className="p-8 text-red-500 font-mono bg-red-50 h-screen">
-      <h1 className="text-2xl font-bold mb-4">
-        Application Error
-      </h1>
-
-      <pre className="whitespace-pre-wrap">
-        {error?.message || String(error)}
-      </pre>
-
-      <pre className="whitespace-pre-wrap text-sm mt-4">
-        {error?.stack}
-      </pre>
+      <h1 className="text-2xl font-bold mb-4">Application Error</h1>
+      <pre className="whitespace-pre-wrap">{error?.message || String(error)}</pre>
+      <pre className="whitespace-pre-wrap text-sm mt-4">{error?.stack}</pre>
     </div>
   );
 }
@@ -42,7 +36,6 @@ export const router = createBrowserRouter([
     path: "/",
     Component: Outlet,
     errorElement: <RootErrorBoundary />,
-
     children: [
       {
         index: true,
@@ -59,12 +52,12 @@ export const router = createBrowserRouter([
         Component: UserLogin,
       },
       {
-        path: "admin/login",
-        Component: AdminLogin,
+        path: "sign-up",
+        Component: UserSignUp,
       },
       {
-        path: "sign-up",
-        Component:  UserSignUp,
+        path: "admin/login",
+        Component: AdminLogin,
       },
       {
         path: "dashboard",
@@ -79,7 +72,7 @@ export const router = createBrowserRouter([
         Component: LoanConfirmation,
       },
 
-      // Borrower protected routes
+      // Borrower protected route (redundant but kept for clarity)
       {
         element: (
           <ProtectedRoute
@@ -123,6 +116,14 @@ export const router = createBrowserRouter([
               {
                 path: "borrowers",
                 Component: BorrowersList,
+              },
+              {
+                path: "proofs",
+                Component: ProofOfPayments,
+              },
+              {
+                path: "investors",
+                Component: InvestorRequests,
               },
             ],
           },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import {
   Bell,
@@ -129,7 +129,25 @@ export default function LoanApplication() {
     register,
     handleSubmit,
     formState: { errors },
+    watch,
   } = useForm<LoanFormData>();
+
+  // Watch ID number and date of birth for relationship validation
+  const watchedIdNumber = watch("idNumber");
+  const watchedDob = watch("dateOfBirth");
+
+  const idDobMismatch = useMemo(() => {
+    if (!watchedIdNumber || watchedIdNumber.length !== 13 || !watchedDob) return false;
+    const idYear  = watchedIdNumber.substring(0, 2);
+    const idMonth = watchedIdNumber.substring(2, 4);
+    const idDay   = watchedIdNumber.substring(4, 6);
+    const dob = new Date(watchedDob);
+    if (isNaN(dob.getTime())) return false;
+    const dobYear  = String(dob.getFullYear()).slice(-2);
+    const dobMonth = String(dob.getMonth() + 1).padStart(2, "0");
+    const dobDay   = String(dob.getDate()).padStart(2, "0");
+    return idYear !== dobYear || idMonth !== dobMonth || idDay !== dobDay;
+  }, [watchedIdNumber, watchedDob]);
 
   const user = { name: "Sipho" };
 
@@ -182,7 +200,14 @@ export default function LoanApplication() {
   };
 
   const onSubmit = async (data: LoanFormData) => {
-   
+    // Prevent submission if ID and DOB mismatch
+    if (idDobMismatch) {
+      toast.error("ID number and date of birth do not match. Please verify your details on Step 1.");
+      setCurrentStep(1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payload = {
@@ -229,7 +254,7 @@ export default function LoanApplication() {
         additional_info: data.additionalInfo || null,
       };
 
-      console.log("submitting...")
+      console.log("submitting...");
 
       const res = await fetch(`${API_URL}/api/applications`, {
         method: "POST",
@@ -456,6 +481,12 @@ export default function LoanApplication() {
                       <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
                         <AlertCircle className="w-3 h-3" />
                         {errors.dateOfBirth.message}
+                      </p>
+                    )}
+                    {idDobMismatch && (
+                      <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Date of birth does not match the ID number provided. Please verify both fields.
                       </p>
                     )}
                   </div>
@@ -1401,13 +1432,11 @@ export default function LoanApplication() {
             to help.
           </p>
           <div className="flex flex-wrap gap-4 text-sm">
-            
-             <a href="tel:0800123456"
+            <a href="tel:0800123456"
               className="text-[#005B3F] hover:text-[#00432E] font-medium flex items-center gap-2"
             >
               📞 0800 123 456
             </a>
-            
             <a  href="mailto:loans@mbudzitshena.co.za"
               className="text-[#005B3F] hover:text-[#00432E] font-medium flex items-center gap-2"
             >
@@ -1415,7 +1444,6 @@ export default function LoanApplication() {
             </a>
           </div>
         </div>
-
       </main>
     </div>
   );

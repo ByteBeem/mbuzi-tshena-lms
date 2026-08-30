@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "api": "cd backend && venv/bin/flask --app api run --no-debugger"
+    "api": "cd backend && ../env/bin/flask --app api run --no-debugger"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
