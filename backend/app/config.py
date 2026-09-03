@@ -15,10 +15,10 @@ class Settings(BaseSettings):
 
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: Optional[str] = None
-    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USER: Optional[str] = "mxolisimib@gmail.com"
+    SMTP_PASSWORD: Optional[str] = "pedwijelgpquboml"
     SMTP_FROM: str = "loans@mbudzitshena.co.za"
-    EMAIL_ENABLED: bool = False
+    EMAIL_ENABLED: bool = True
 
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 10

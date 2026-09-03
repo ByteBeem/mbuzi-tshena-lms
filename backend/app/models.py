@@ -5,6 +5,7 @@ from sqlalchemy import (
     Enum as SAEnum, Numeric
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum
 from app.database import Base
 import enum
 
@@ -265,3 +266,23 @@ class FraudAlert(Base):
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NotificationType(str, enum.Enum):
+    PROOF_ACCEPTED = "proof_accepted"
+    PROOF_REJECTED = "proof_rejected"
+    LOAN_APPROVED = "loan_approved"
+    LOAN_REJECTED = "loan_rejected"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(Enum(NotificationType), nullable=False)
+    message = Column(String, nullable=False)
+    read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", backref="notifications")
