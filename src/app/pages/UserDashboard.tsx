@@ -2,26 +2,65 @@ import { Link, useNavigate } from "react-router";
 import {
   Bell, LogOut, CheckCircle2, ArrowRight, Activity, Wallet, PieChart, TrendingUp,
   CreditCard, Briefcase, Filter, X, Upload, FileText, Clock, XCircle, Megaphone,
-  Info, AlertCircle
+  Info, AlertCircle, Loader2
 } from "lucide-react";
 import clsx from "clsx";
 import { Logo } from "../components/Logo";
 import { useState, useEffect, useMemo, useRef } from "react";
 
-/* ─── Notification types ────────────────────────────────────────── */
-interface Notification {
+/* ─── Real notifications API shape ───────────────────────────────── */
+// Matches NotificationOut returned by GET /api/notifications/me
+interface ApiNotification {
   id: number;
   type: "proof_accepted" | "proof_rejected" | "loan_approved" | "loan_rejected";
   message: string;
-  date: string;
   read: boolean;
+  created_at: string;
 }
 
-const initialNotifications: Notification[] = [
-  { id: 1, type: "loan_approved",  message: "Your loan application APP-2024-003 has been approved. Funds will be disbursed within 2 business days.", date: "Today, 09:41",    read: false },
-  { id: 2, type: "proof_accepted", message: "Your proof of payment for APP-2024-001 has been verified by our team.",                                  date: "Yesterday, 14:22", read: false },
-  { id: 3, type: "proof_rejected", message: "Your proof of payment for APP-2023-008 was not accepted. Please re-upload a clearer document.",          date: "Mar 10, 09:00",   read: true  },
-];
+interface Notification extends ApiNotification {
+  date: string; // formatted display string derived from created_at
+}
+
+// "Today, 09:41" / "Yesterday, 14:22" / "Mar 10, 09:00"
+function formatNotificationDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  if (date.toDateString() === now.toDateString()) return `Today, ${time}`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday, ${time}`;
+
+  return `${date.toLocaleDateString("en-ZA", { month: "short", day: "numeric" })}, ${time}`;
+}
+
+/* ─── Real application history API shape ────────────────────────── */
+// Matches ApplicationHistoryItem / LoanSummary returned by
+// GET /api/applications/me/history
+interface ApiLoanSummary {
+  loan_number: string;
+  status: string;
+  outstanding_balance: number;
+  monthly_instalment: number;
+  total_repayable: number;
+}
+
+interface ApiApplicationHistoryItem {
+  reference_number: string;
+  loan_type: string;
+  loan_amount: number;
+  status: string;
+  created_at: string;
+  ai_risk_score: number | null;
+  repayment_probability: number | null;
+  loan: ApiLoanSummary | null;
+}
+
+const formatCurrency = (value: number) =>
+  `R ${value.toLocaleString("en-ZA", { maximumFractionDigits: 0 })}`;
 
 /* ─── Investor modal ─────────────────────────────────────────────── */
 interface InvestorFormData {
@@ -161,13 +200,6 @@ interface LoanRecord {
   riskScore: number;
 }
 
-const loanHistory: LoanRecord[] = [
-  { id: "APP-2024-003", amount: "R 50,000", amountValue: 50000, type: "Personal Loan", status: "pending", date: "2024-03-01", repaymentProbability: 78, riskScore: 84 },
-  { id: "APP-2024-001", amount: "R 25,000", amountValue: 25000, type: "Business Loan", status: "approved", date: "2024-01-15", repaymentProbability: 92, riskScore: 84 },
-  { id: "APP-2023-008", amount: "R 10,000", amountValue: 10000, type: "Emergency Loan", status: "repaid", date: "2023-08-20", repaymentProbability: 97, riskScore: 76 },
-  { id: "APP-2023-002", amount: "R 80,000", amountValue: 80000, type: "Business Loan", status: "rejected", date: "2023-02-10", repaymentProbability: 45, riskScore: 42 },
-];
-
 const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   approved: { label: "Approved", className: "bg-[#E5F2D9] text-[#005B3F] border-[#B4D330]/30", icon: <CheckCircle2 className="w-3 h-3" /> },
   pending:  { label: "Pending",  className: "bg-amber-50 text-amber-700 border-amber-100",     icon: <Clock className="w-3 h-3" /> },
@@ -175,10 +207,21 @@ const statusConfig: Record<string, { label: string; className: string; icon: Rea
   repaid:   { label: "Repaid",   className: "bg-blue-50 text-blue-700 border-blue-100",        icon: <CheckCircle2 className="w-3 h-3" /> },
 };
 
+// Maps backend ApplicationStatus + nested Loan.status into the frontend's
+// four-state badge. Loan.status "Paid Off" (set in the payments router
+// when outstanding_balance hits 0) takes priority over the application status.
+function mapApiStatus(item: ApiApplicationHistoryItem): LoanRecord["status"] {
+  if (item.loan?.status?.toLowerCase() === "paid off") return "repaid";
+  const s = item.status.toLowerCase();
+  if (s === "approved") return "approved";
+  if (s === "rejected" || s === "declined") return "rejected";
+  return "pending"; // covers pending, under_review, etc.
+}
+
 export default function UserDashboard() {
   const navigate = useNavigate();
 
-  // ─── Backend user data (from old version) ───────────────────────
+  // ─── Backend user data ───────────────────────────────────────────
   const [user, setUser] = useState<any>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutMessage, setLogoutMessage] = useState("");
@@ -207,7 +250,6 @@ export default function UserDashboard() {
         throw new Error(data.message || "Logout failed");
       }
 
-      // Give the user a moment to see the success message
       setTimeout(() => {
         sessionStorage.removeItem("user");
         navigate("/login", { replace: true });
@@ -220,16 +262,105 @@ export default function UserDashboard() {
     }
   };
 
-  // ─── Derived user status string (used in AI risk text) ─────────
-  const userStatus = user?.is_active ? "Excellent" : "Inactive"; // you can adjust logic if needed
+  // ─── Real loan application history ──────────────────────────────
+  const [apiHistory, setApiHistory] = useState<ApiApplicationHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
 
-  // ─── New features state ────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        setHistoryLoading(true);
+        setHistoryError("");
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/applications/me/history`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Couldn't load your loan application history.");
+        const data: ApiApplicationHistoryItem[] = await res.json();
+        setApiHistory(data);
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          setHistoryError(err.message || "Something went wrong loading your applications.");
+        }
+      } finally {
+        setHistoryLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [user]);
+
+  const loanHistory: LoanRecord[] = useMemo(
+    () =>
+      apiHistory.map((item) => ({
+        id: item.reference_number,
+        amount: formatCurrency(item.loan_amount),
+        amountValue: item.loan_amount,
+        type: item.loan_type,
+        status: mapApiStatus(item),
+        date: item.created_at.slice(0, 10), // YYYY-MM-DD, for the date-range filter
+        repaymentProbability: item.repayment_probability,
+        riskScore: item.ai_risk_score ?? 0,
+      })),
+    [apiHistory]
+  );
+
+  // Sum of outstanding_balance across loans that aren't paid off yet.
+  // Relies on GET /api/applications/me/history nesting `loan.outstanding_balance`.
+  const activeLoanBalance = useMemo(
+    () =>
+      apiHistory.reduce((sum, item) => {
+        if (item.loan && item.loan.status?.toLowerCase() !== "paid off") {
+          return sum + Number(item.loan.outstanding_balance);
+        }
+        return sum;
+      }, 0),
+    [apiHistory]
+  );
+
+  // ─── Derived user status string (used in AI risk text) ─────────
+  const userStatus = user?.is_active ? "Excellent" : "Inactive";
+
+  // ─── Real notifications ──────────────────────────────────────────
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
   const notifRef = useRef<HTMLDivElement>(null);
   const notifBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        setNotificationsLoading(true);
+        setNotificationsError("");
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/notifications/me`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Couldn't load notifications.");
+        const data: ApiNotification[] = await res.json();
+        setNotifications(data.map(n => ({ ...n, date: formatNotificationDate(n.created_at) })));
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          setNotificationsError(err.message || "Something went wrong loading notifications.");
+        }
+      } finally {
+        setNotificationsLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [user]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -242,15 +373,33 @@ export default function UserDashboard() {
 
   const openNotifications = () => {
     setShowNotifications(p => !p);
+    if (unreadCount === 0) return;
+
+    // Optimistic update, then tell the backend. If the request fails we
+    // don't roll back — worst case the badge under-counts until next load.
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    fetch(`${import.meta.env.VITE_API_URL}/api/notifications/me/read-all`, {
+      method: "PATCH",
+      credentials: "include",
+    }).catch(err => console.error("Failed to mark notifications as read:", err));
   };
 
+  // ─── Investor modal / "Total Invested" ──────────────────────────
+  // NOTE: there is no investments backend/model, so this total only
+  // reflects requests submitted in this browser session — it resets
+  // on reload and isn't shared across devices. Add an investments
+  // table + endpoint (e.g. GET /api/investments/me) to make this durable.
   const [showInvestorModal, setShowInvestorModal] = useState(false);
   const [investorRequests, setInvestorRequests] = useState<InvestorFormData[]>([]);
 
   const handleInvestorSubmit = (data: InvestorFormData) => {
     setInvestorRequests(prev => [...prev, data]);
   };
+
+  const totalInvested = useMemo(
+    () => investorRequests.reduce((sum, r) => sum + r.amount, 0),
+    [investorRequests]
+  );
 
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filterStatus, setFilterStatus]       = useState("all");
@@ -277,10 +426,7 @@ export default function UserDashboard() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const [proofUploads, setProofUploads] = useState<Record<string, string>>({
-    "APP-2024-001": "payment_proof_jan.pdf",
-    "APP-2023-008": "receipt_aug23.jpg",
-  });
+  const [proofUploads, setProofUploads] = useState<Record<string, string>>({});
 
   const latestApplication = loanHistory.length > 0 ? loanHistory[0] : null;
   const aiRiskScore = latestApplication?.riskScore ?? null;
@@ -301,7 +447,7 @@ export default function UserDashboard() {
       if (filterMaxAmount && loan.amountValue > Number(filterMaxAmount)) return false;
       return true;
     });
-  }, [filterStatus, filterDateFrom, filterDateTo, filterMinAmount, filterMaxAmount]);
+  }, [loanHistory, filterStatus, filterDateFrom, filterDateTo, filterMinAmount, filterMaxAmount]);
 
   const clearFilters = () => {
     setFilterStatus("all");
@@ -316,7 +462,7 @@ export default function UserDashboard() {
     if (file) setProofUploads(prev => ({ ...prev, [loanId]: file.name }));
   };
 
-  // ─── Loading state (from old version) ───────────────────────────
+  // ─── Loading state ────────────────────────────────────────────
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F6F8]">
@@ -358,7 +504,14 @@ export default function UserDashboard() {
                       <span className="text-xs text-gray-400 font-medium">{notifications.length} total</span>
                     </div>
                     <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
-                      {notifications.length === 0 ? (
+                      {notificationsLoading ? (
+                        <div className="p-6 text-center text-sm text-gray-400 font-medium flex flex-col items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading…
+                        </div>
+                      ) : notificationsError ? (
+                        <div className="p-6 text-center text-sm text-red-500 font-medium">{notificationsError}</div>
+                      ) : notifications.length === 0 ? (
                         <div className="p-6 text-center text-sm text-gray-400 font-medium">No notifications</div>
                       ) : (
                         notifications.map(n => (
@@ -605,7 +758,9 @@ export default function UserDashboard() {
                   </div>
                   <div>
                     <div className="text-xs font-medium text-gray-500">Active Loan Balance</div>
-                    <div className="text-sm font-bold text-gray-900">R 0.00</div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {historyLoading ? "—" : formatCurrency(activeLoanBalance)}
+                    </div>
                   </div>
                 </div>
 
@@ -615,7 +770,7 @@ export default function UserDashboard() {
                   </div>
                   <div>
                     <div className="text-xs font-medium text-gray-500">Total Invested</div>
-                    <div className="text-sm font-bold text-gray-900">R 0.00</div>
+                    <div className="text-sm font-bold text-gray-900">{formatCurrency(totalInvested)}</div>
                   </div>
                 </div>
               </div>
@@ -630,8 +785,9 @@ export default function UserDashboard() {
             <div>
               <h2 className="text-xl font-bold text-[#111827]">Loan Application History</h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                {filteredHistory.length} application{filteredHistory.length !== 1 ? "s" : ""}
-                {hasActiveFilters ? " (filtered)" : ""}
+                {historyLoading
+                  ? "Loading your applications…"
+                  : `${filteredHistory.length} application${filteredHistory.length !== 1 ? "s" : ""}${hasActiveFilters ? " (filtered)" : ""}`}
               </p>
             </div>
 
@@ -729,12 +885,28 @@ export default function UserDashboard() {
 
           {/* Loan list */}
           <div className="space-y-3">
-            {filteredHistory.length === 0 ? (
+            {historyLoading ? (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center flex flex-col items-center gap-3">
+                <Loader2 className="w-6 h-6 text-[#005B3F] animate-spin" />
+                <p className="text-gray-500 font-medium text-sm">Loading your loan application history…</p>
+              </div>
+            ) : historyError ? (
+              <div className="bg-white rounded-xl border border-red-100 shadow-sm p-10 text-center">
+                <p className="text-red-600 font-medium text-sm">{historyError}</p>
+                <p className="text-gray-400 text-xs mt-1">Try refreshing the page.</p>
+              </div>
+            ) : filteredHistory.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center">
-                <p className="text-gray-500 font-medium">No applications match your filter criteria.</p>
-                <button onClick={clearFilters} className="mt-3 text-sm font-bold text-[#005B3F] hover:text-[#00432E] transition-colors">
-                  Clear filters
-                </button>
+                <p className="text-gray-500 font-medium">
+                  {apiHistory.length === 0
+                    ? "You haven't submitted a loan application yet."
+                    : "No applications match your filter criteria."}
+                </p>
+                {hasActiveFilters && apiHistory.length > 0 && (
+                  <button onClick={clearFilters} className="mt-3 text-sm font-bold text-[#005B3F] hover:text-[#00432E] transition-colors">
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : (
               filteredHistory.map(loan => {
