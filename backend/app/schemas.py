@@ -354,3 +354,20 @@ class PaginatedResponse(BaseModel):
 # Rebuild forward refs
 Token.model_rebuild()
 LoanApplicationOut.model_rebuild()
+
+
+class NotificationOut(BaseModel):
+    id: int
+    type: str
+    message: str
+    read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationCreate(BaseModel):
+    user_id: int
+    type: str
+    message: str

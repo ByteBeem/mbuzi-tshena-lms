@@ -163,6 +163,72 @@ def my_applications(
     return apps
 
 
+from pydantic import BaseModel
+from decimal import Decimal
+
+
+class LoanSummary(BaseModel):
+    loan_number: str
+    status: str
+    outstanding_balance: float
+    monthly_instalment: float
+    total_repayable: float
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationHistoryItem(BaseModel):
+    reference_number: str
+    loan_type: str
+    loan_amount: float
+    status: str
+    created_at: datetime
+    ai_risk_score: Optional[float] = None
+    repayment_probability: Optional[float] = None
+    loan: Optional[LoanSummary] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/me/history", response_model=List[ApplicationHistoryItem])
+def my_application_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    apps = (
+        db.query(LoanApplication)
+        .filter(LoanApplication.user_id == current_user.id)
+        .order_by(LoanApplication.created_at.desc())
+        .all()
+    )
+
+    history = []
+    for a in apps:
+        history.append(
+            ApplicationHistoryItem(
+                reference_number=a.reference_number,
+                loan_type=a.loan_type,
+                loan_amount=float(a.loan_amount),
+                status=a.status.value,
+                created_at=a.created_at,
+                ai_risk_score=a.ai_risk_score,
+                repayment_probability=(
+                    round(100 - a.ai_risk_score, 1) if a.ai_risk_score is not None else None
+                ),
+                loan=LoanSummary(
+                    loan_number=a.loan.loan_number,
+                    status=a.loan.status,
+                    outstanding_balance=float(a.loan.outstanding_balance),
+                    monthly_instalment=float(a.loan.monthly_instalment),
+                    total_repayable=float(a.loan.total_repayable),
+                ) if a.loan else None,
+            )
+        )
+
+    return history
+
 @router.get("/{reference_or_id}", response_model=LoanApplicationOut)
 def get_application(
     reference_or_id: str,
