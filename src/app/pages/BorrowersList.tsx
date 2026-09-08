@@ -47,7 +47,7 @@ export default function BorrowersList() {
       try {
         setLoading(true);
         setError("");
-        const res = await fetch(`${API_URL}/api/admin/borrowers`, {
+        const res = await fetch(`${API_URL}/api/applications`, {
           credentials: "include",
         });
         if (!res.ok) throw new Error("Failed to load borrowers");
@@ -56,15 +56,15 @@ export default function BorrowersList() {
         // Map API response to the table format. Missing fields become placeholders.
         const mapped: Borrower[] = (data.items ?? []).map((item: any, index: number) => ({
           id: String(item.id ?? `USR-${index + 1}`),
-          name: item.full_name ?? "Unknown",
+          name: item.name ?? "Unknown",
           idNumber: item.id_number ?? "—",
           phone: item.phone ?? "—",
-          riskScore: item.risk_score ?? 0,
-          loanAmount: item.loan_amount ?? "—",
+          riskScore: item.score ?? 0,
+          loanAmount: item.amount ?? "—",
           amountValue: item.amount_value ?? 0,
           loanType: item.loan_type ?? "—",
           status: item.status ?? "—",
-          joinedDate: item.joined_date ?? "—",
+          joinedDate: item.date ?? "—",
         }));
         setBorrowers(mapped);
       } catch (err: any) {
@@ -288,7 +288,7 @@ export default function BorrowersList() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 font-medium">
-                      {b.joinedDate === "—" ? "—" : new Date(b.joinedDate).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
+                      {b.joinedDate === "—" ? "—" : b.joinedDate }
                     </td>
                   </tr>
                 ))}

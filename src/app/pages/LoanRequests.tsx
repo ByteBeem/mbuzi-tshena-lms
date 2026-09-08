@@ -125,8 +125,8 @@ function DetailModal({ requestId, onClose, onUpdate }: DetailModalProps) {
     }
     setCommentError(false);
     try {
-      const res = await fetch(`${API_URL}/api/applications/${request.id}/override`, {
-        method: "POST",
+      const res = await fetch(`${API_URL}/api/applications/${request.id}/status`, {
+        method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: overrideStatus, comment: overrideComment.trim() }),

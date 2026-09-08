@@ -148,6 +148,33 @@ def payments_summary(
         "failed_count": failed_count,
     }
 
+@router.get("/{rtx_id}", response_model=dict)
+def get_payment(
+    rtx_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    payment = (
+        db.query(Payment)
+        .filter(Payment.transaction_id == rtx_id)
+        .first()
+    )
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    borrower = db.query(User).filter(User.id == payment.user_id).first()
+    payment_data = {
+        column.name: getattr(payment, column.name)
+        for column in Payment.__table__.columns
+    }
+    payment_data["borrower_name"] = borrower.full_name if borrower else None
+    payment_data["phone"] = borrower.phone_number if borrower else None
+    payment_data["date"] = (
+        payment.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        if payment.created_at
+        else None
+    )
+    return payment_data
 
 @router.get("/me", response_model=List[PaymentOut])
 def my_payments(
