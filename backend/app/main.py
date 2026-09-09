@@ -24,32 +24,32 @@ def seed_admin():
         admin = db.query(User).filter(User.role == UserRole.ADMIN).first()
         if not admin:
             admin = User(
-                email="me@mxolisi.dev",
+                email="admin@mbuzi.tshena.lms",
                 hashed_password=get_password_hash("Admin@12345"),
-                full_name="Donald Mxolisi Mohlala",
+                full_name="Mbuzi Tshena",
                 role=UserRole.ADMIN,
                 is_active=True,
             )
             db.add(admin)
             db.commit()
-            logger.info("Default admin created → me@mxolisi.dev / Admin@12345")
+            logger.info("Default admin created → admin@mbuzi.tshena.lms / Admin@12345")
         else:
             logger.info("Admin user already exists")
     finally:
         db.close()
 
 
-
+    """
 def seed_client():
-    """Create default BORROWER  if none exists."""
+   
     db = SessionLocal()
     try:
         borrower  = db.query(User).filter(User.role == UserRole.BORROWER).first()
         if not borrower :
             borrower  = User(
-                email="borrower@mxolisi.dev",
+                email="borrower@mbuzi.tshena.lms",
                 hashed_password=get_password_hash("BORROWER@12345"),
-                full_name="Donald Mxolisi Mohlala",
+                full_name="Mbuzi Tshena",
                 id_number="8308110424081",
                 phone_number="0781045677",
                 role=UserRole.BORROWER,
@@ -58,12 +58,12 @@ def seed_client():
             )
             db.add(borrower )
             db.commit()
-            logger.info("Default borrower  created → borrower@mxolisi.dev / BORROWER@12345")
+            logger.info("Default borrower  created → borrower@mbuzi.tshena.lms / BORROWER@12345")
         else:
             logger.info("borrower  user already exists")
     finally:
         db.close()
-
+    """
 
 
 @asynccontextmanager
@@ -72,7 +72,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_db()
     seed_admin()
-    seed_client()
+    #seed_client()
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     logger.info("Mbudzi Tshena LMS API ready")
     yield

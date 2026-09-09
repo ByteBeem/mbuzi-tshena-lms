@@ -229,6 +229,28 @@ def my_application_history(
 
     return history
 
+@router.get("/active", response_model=LoanApplicationOut)
+def get_active_application(
+    status: Optional[str] = "Approved",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(LoanApplication)
+
+    if current_user.role != UserRole.ADMIN:
+        q = q.filter(LoanApplication.user_id == current_user.id)
+
+    if status:
+        q = q.filter(LoanApplication.status == status)
+
+    app = q.order_by(LoanApplication.id.desc()).first()
+
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    return app
+
+
 @router.get("/{reference_or_id}", response_model=LoanApplicationOut)
 def get_application(
     reference_or_id: str,

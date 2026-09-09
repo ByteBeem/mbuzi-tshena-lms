@@ -13,16 +13,16 @@ const PAGE_SIZE = 20;
 // ---------- Types -------------------------------------------------------------
 interface TransactionListItem {
   id: string;
-  borrower: string;
+  borrower_name: string;
   amount: string;
-  type: "Repayment" | "Disbursement";
+  payment_type: "Repayment" | "Disbursement";
   date: string;
   status: "Completed" | "Failed" | "Pending";
 }
 
 interface TransactionDetail extends TransactionListItem {
-  userId: string;
-  loanId: string;
+  user_id: string;
+  loan_id: string;
   phone: string;
   amountRaw: number;
   dueDate: string;
@@ -39,7 +39,7 @@ interface Summary {
 }
 
 interface ActiveLoanUser {
-  userId: string;
+  user_id: string;
   name: string;
   loans: { id: string; label: string }[];
 }
@@ -184,10 +184,10 @@ function DetailModal({ txId, onClose, onUpdate }: { txId: string; onClose: () =>
               <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">User & Loan</h4>
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-              <Field label="Borrower" value={tx.borrower} />
-              <Field label="User ID" value={tx.userId} />
+              <Field label="Borrower" value={tx.borrower_name} />
+              <Field label="User ID" value={tx.user_id} />
               <Field label="Phone" value={tx.phone} />
-              <Field label="Loan ID" value={tx.loanId} />
+              <Field label="Loan ID" value={tx.loan_id} />
             </div>
           </div>
 
@@ -198,7 +198,7 @@ function DetailModal({ txId, onClose, onUpdate }: { txId: string; onClose: () =>
               <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Payment Details</h4>
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-              <Field label="Type" value={tx.type} />
+              <Field label="Type" value={tx.payment_type} />
               <Field label="Amount" value={tx.amount} highlight />
               <Field label="Payment Date" value={tx.date} />
               <Field label="Due Date" value={tx.dueDate} />
@@ -326,10 +326,40 @@ function ManualRepaymentModal({ onClose, onSubmit }: { onClose: () => void; onSu
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/users/active-loans`, { credentials: "include" });
+        const res = await fetch(`${API_URL}/api/applications/active`, { credentials: "include" });
         if (!res.ok) throw new Error("Failed to load active loan users");
         const data = await res.json();
-        setUsers(data);
+        const applications = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.users)
+            ? data.users
+            : Array.isArray(data?.items)
+              ? data.items
+              : data && typeof data === "object"
+                ? [data]
+                : [];
+
+        const usersById = new Map<string, ActiveLoanUser>();
+        applications.forEach((application: any) => {
+          if (application?.user_id == null) return;
+
+          const userId = String(application.user_id);
+          const user = usersById.get(userId) || {
+            user_id: userId,
+            name: application.full_name || application.name || `User ${userId}`,
+            loans: [],
+          };
+
+          if (application.id != null && !user.loans.some(loan => loan.id === String(application.id))) {
+            user.loans.push({
+              id: String(application.id),
+              label: `${application.reference_number || `Loan ${application.id}`} · R${Number(application.loan_amount || 0).toFixed(2)}`,
+            });
+          }
+          usersById.set(userId, user);
+        });
+
+        setUsers(Array.from(usersById.values()));
       } catch (err) {
         // Fallback to empty; could also show error
         setUsers([]);
@@ -339,7 +369,9 @@ function ManualRepaymentModal({ onClose, onSubmit }: { onClose: () => void; onSu
     })();
   }, []);
 
-  const userObj = users.find(u => u.userId === selectedUser);
+  console.log("Active loan users:", users);
+
+  const userObj = users.find(u => u.user_id === selectedUser) || null;
   const loanOpts = userObj?.loans ?? [];
 
   const validate = () => {
@@ -355,16 +387,17 @@ function ManualRepaymentModal({ onClose, onSubmit }: { onClose: () => void; onSu
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     const payload = {
-      userId: selectedUser,
-      loanId: selectedLoan,
+      user_id: selectedUser,
+      loan_id: selectedLoan,
       amount: Number(amount),
       payment_date: payDate,
-      method,
+      payment_type : "Repayment",
+      payment_method: method,
       note: note || null,
       proof_file: proofFile,
     };
     try {
-      const res = await fetch(`${API_URL}/api/payments/manual`, {
+      const res = await fetch(`${API_URL}/api/payments`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -416,7 +449,7 @@ function ManualRepaymentModal({ onClose, onSubmit }: { onClose: () => void; onSu
                   errors.user ? "border-red-400" : "border-gray-200", loadingUsers && "opacity-50")}
               >
                 <option value="">{loadingUsers ? "Loading borrowers..." : "Select a borrower with an active loan…"}</option>
-                {users.map(u => <option key={u.userId} value={u.userId}>{u.name}</option>)}
+                {users.map(u => <option key={u.user_id} value={u.user_id}>{u.name}</option>)}
               </select>
               {errors.user && <p className="text-red-500 text-xs mt-1">{errors.user}</p>}
             </div>
